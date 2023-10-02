@@ -1,0 +1,205 @@
+#!/usr/bin/perl -s
+
+
+#Here is the code for DesBreak V0.9
+#Due it's my first program in perl don't be too hard on me,
+#it's elegant as much as I could make it.
+#You need to have Perl interpreter (it'll work on 5.x versions)
+#The only problem is that is slower than I expected, it makes about
+#6000 tries, on my celleron 300Mhz, for compare John The Ripper has
+#about 10000 tries a second. I'll have to port it to C, which will
+#be the next step, along with making this program useful
+
+
+
+#this is the main function of this code. I could put BEGIN {... }
+#here, but what the hell
+
+
+if (open(PASSWORD,$file) && ($chset=~/[a1A!]/) && (maxch<=8))
+{
+  if ($maxch<1) {$maxch=8;}
+  $rude_pass=<PASSWORD>;
+  close(PASSWORD);
+  $clear_pass=&clr_pass($rude_pass);
+  $salt = substr($clear_pass, 0, 2);
+  @char_set = &set_chset($chset);
+  $string="";
+  &des_break($clear_pass, $salt, $maxch, $string, @char_set);
+} else {
+
+  print("DesBreak V0.9 for *nix by Caboom 09.02.2000\n\n");
+  print("Usage: desbreak -file=passwd -chset=0,a,A,!,0a...\n\n");
+  print(":  passwd - file with encripted password\n");
+  print(":  1,a,A,!,0a,... or any combination of those define \n");
+  print("   charset used when brute-forcing password \n");
+  print("   1 -- includes numbers 0...9\n");
+  print("   a -- includes small letters a...z\n");
+  print("   A -- includes capital letters A...Z\n");
+  print("   ! -- includes special characters !,@,#,$....\n");
+  print("   0a!... -- combination of those  charsets\n\n");  
+  print("This release is useless for breaking real DES passwords\n");
+  print("It was made with Slackware 7 and it was written in XEmacs\n");
+  print("It uses perl built-in crypt() function, and it's only \n");
+  print("demonstration on how could you break real DES passwords. \n");
+  print("Future releases will probably break real DES passwords,\n");
+  print("with both dictionary, and brute-force attack\n");
+  print("You may use and distribute and change code as long as you\n");
+  print("note that you've used my code\n");
+  print("Any questions and critics are wellcome, you may mail me at:\n\n");
+  print("      myonlyemail\@yahoo.com\n");
+	
+  &end;
+}
+  
+
+
+#this function takes real pass from unix passwd/shadow file
+#in this version it attacks only first password, but this will
+#be corrected in the next version
+
+
+
+sub clr_pass
+{
+  my($rd_ps)=@_;
+  my($cl_ps, $tmp_ps);
+
+  if ($rd_ps =~ /:/)
+    {
+      $rd_ps = substr($rd_ps, index($rd_ps, ":")+1);
+      if (($tmp_ps = index($rd_ps, ":")) > 0){
+	$rd_ps = substr($rd_ps, 0, $tmp_ps);
+      }
+    } 
+	
+  chomp($rd_ps);	
+  $cl_ps = $rd_ps;
+}
+
+
+
+#this function generates charset from input given in command line
+#you can add some more special characters, I've used only common ones
+
+
+
+sub set_chset{
+	
+  my($in_chr)=@_;
+  my(@pattern);
+
+  if ($in_chr =~ /1/) {@pattern=(@pattern ,"0".."9");}
+  if ($in_chr =~ /a/) {@pattern=(@pattern ,"a".."z");}
+  if ($in_chr =~ /A/) {@pattern=(@pattern ,"A".."Z");}
+  if ($in_chr =~ /!/) 
+  {	
+    @pattern=(@pattern,"!","\"","#","\$","%","^");
+    @pattern=(@pattern,"&","*","(",")","_","-","+");
+    @pattern=(@pattern,"=","[","]","{","}",";",":");
+    @pattern=(@pattern,"'","@","/","\\","|","?",".");
+    @pattern=(@pattern,",","<",">","`","~");
+  }
+  if (($pat_len=@pattern)==0) {&end};
+	
+  @pattern;
+}
+
+
+
+#now we're close to the real stuff! This function initializes
+#generator of passwords and also it controls it's flow
+#it'll initialize recursion for all lengths, and let recusion
+#do the rest
+
+
+
+sub des_break{
+  my($clr_ps, $slt, $max, @ch_set)=@_;
+  my($min, $str);
+
+  $min = 0;
+  $str = "";
+
+  while(++$min <= $max){
+    &rec_brk($str, $min, 0,$clr_ps, $slt, @ch_set);
+  }
+}
+
+
+
+#Here is the real stuff! Code that I'm proud of :)
+#Making recursions that work is real hell, and if you
+#don't believe me, try to make one.. that works.
+#The power of this function is that is soooo small
+#and yet it's not resource eater, like recursions usualy are.
+#This function invokes itself untill it reaches length of
+#pass that &des_break initialized. When it makes full circle
+#it returns, goes to next letter, then again invokes itself
+#and over, and over, untill it tries all possible combinations
+#with chars in array @ch_set. Something like:
+#a b .... z aa ab .... az (back, increase, call) ba ... bz .... aaa
+#and so on.
+
+
+
+sub rec_brk{
+  
+  my($str, $min, $cur_len, $clr_ps, $slt, @ch_set)=@_;
+  my($cnt, $my_cnt, $len_ch);
+
+  $len_ch = @ch_set;
+  $cnt = 0;
+
+  while ($cnt++ < $len_ch){
+    if ($cur_len < $min-1){
+      &rec_brk ($str . $ch_set[$cnt], $min, $cur_len+1, $clr_ps, $slt, @ch_set);
+    } else {
+      $chk_str = $str . $ch_set[$cnt];
+      &des_comp($min, $clr_ps, $slt, $chk_str);
+    }
+  }
+}
+
+
+
+#This functions just checks is it that real password
+#It also corrects one bug of recursion (try to find
+#which is that bug).
+
+
+
+sub des_comp {
+  my($min_cp, $clear_ps, $slt_cp, $chk_str)=@_;
+
+  if (length($chk_str) == $min_cp){
+    if ($clear_ps eq crypt ($chk_str, $slt_cp)){
+      &bingo($chk_str, $slt_cp);
+    }
+  }
+}
+
+
+
+#If passes matched, it gives prompt to you, lucky pass
+#breaker :)
+
+
+
+sub bingo {
+  my($chk_str, $slt_cp)=@_;
+
+  print ("Password is Broken!!! \n Password: ", $chk_str, "\n salt: ", $slt_cp, "\n");
+  &end
+}
+
+
+
+#This is just end, something like return 0; in C,C++ 
+#(Not same, but close)
+
+
+
+sub end{
+  die ("\n");
+}
